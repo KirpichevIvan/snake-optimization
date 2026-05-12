@@ -3,7 +3,7 @@ import random
 from game import SnakeGame, Move
 
 rng = random.Random()
-game = SnakeGame(rng, (5, 5))
+game = SnakeGame(rng, (10, 10))
 
 while True:
     state = game.get_state()

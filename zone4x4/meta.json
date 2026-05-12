@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "max_steps": 200,
+  "field_height": 10,
+  "field_width": 10,
+  "workers": 0,
+  "bounds": [
+    [
+      -2.0,
+      2.0,
+      0.2
+    ],
+    [
+      -2.0,
+      2.0,
+      0.2
+    ],
+    [
+      -2.0,
+      2.0,
+      0.2
+    ],
+    [
+      -2.0,
+      2.0,
+      0.2
+    ]
+  ],
+  "param_labels": [
+    "w_food",
+    "w_danger",
+    "w_space",
+    "w_wall"
+  ],
+  "shape": [
+    21,
+    21,
+    21,
+    21
+  ],
+  "n_points": 194481
+}

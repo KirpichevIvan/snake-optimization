@@ -8,10 +8,14 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
+    "matplotlib>=3.8.0",
+    "numpy>=1.26.0",
+    "plotly>=5.18.0",
     "openai>=1.40.0",
     "python-dotenv>=1.0.0",
     "streamlit>=1.38.0",
+    "tqdm>=4.66.0",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["game", "player", "ui", "llm_as_optimizer"]
+packages = ["game", "player", "ui", "llm_as_optimizer", "adam_as_optimizer", "space"]
