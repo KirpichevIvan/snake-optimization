@@ -1,6 +1,9 @@
+import random
+
 from game import SnakeGame, Move
 
-game = SnakeGame(field_size=(5, 5))
+rng = random.Random()
+game = SnakeGame(rng, (5, 5))
 
 while True:
     state = game.get_state()

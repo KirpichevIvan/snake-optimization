@@ -17,9 +17,8 @@ class SnakeGame:
 
     def __init__(
         self,
-        field_size: tuple[int, int],
-        *,
-        rng: random.Random | None = None,
+        rng: random.Random,
+        field_size: tuple[int, int] = (5, 5),
     ) -> None:
         height, width = field_size
         if height < 1 or width < 1:
@@ -28,7 +27,7 @@ class SnakeGame:
 
         self._height = height
         self._width = width
-        self._rng = rng if rng is not None else random.Random()
+        self._rng = rng
 
         start_r, start_c = height // 2, width // 2
         self._snake: list[tuple[int, int]] = [(start_r, start_c)]
@@ -46,6 +45,11 @@ class SnakeGame:
     @property
     def field_size(self) -> tuple[int, int]:
         return self._height, self._width
+
+    @property
+    def rng(self) -> random.Random:
+        """Тот же экземпляр, что передан в конструктор; нужен для согласованности с ``Player``."""
+        return self._rng
 
     def get_state(self) -> GameState:
         field = build_field_matrix(

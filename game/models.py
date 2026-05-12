@@ -48,7 +48,9 @@ def build_field_matrix(
 ) -> tuple[tuple[int, ...], ...]:
     """
     Собирает матрицу поля: 0 пусто, 1 тело, 2 голова, 3 яблоко.
-    Яблоко не рисуется при победе (поле заполнено змейкой).
+    Яблоко не рисуется при победе (поле заполнено змейкой, ``apple`` сброшено).
+    При поражении яблоко остаётся на поле, если координаты заданы — чтобы финальное
+    состояние отражало картину до конца хода (в т.ч. для награды за расстояние до яблока).
     """
     field = [[0] * width for _ in range(height)]
     if len(snake) >= 2:
@@ -56,7 +58,7 @@ def build_field_matrix(
             field[r][c] = 1
     hr, hc = snake[0]
     field[hr][hc] = 2
-    if apple is not None and status is GameStatus.IN_PROGRESS:
+    if apple is not None and status is not GameStatus.GAME_COMPLETED:
         ar, ac = apple
         field[ar][ac] = 3
     return tuple(tuple(row) for row in field)
