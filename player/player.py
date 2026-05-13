@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from game import SnakeGame
 from game.models import GameState, GameStatus
@@ -35,12 +35,20 @@ class Player:
         self._rng = rng
         self._max_steps = max_steps
 
-    def play(self) -> list[GameState]:
+    def play(
+        self,
+        *,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> list[GameState]:
         game = self._game
-        for _ in range(self._max_steps):
+        if progress_callback is not None:
+            progress_callback(0, self._max_steps)
+        for i in range(self._max_steps):
             st = game.get_state()
             if st.status is not GameStatus.IN_PROGRESS:
                 break
             mv = choose_move(st, self._theta, max_steps=self._max_steps, rng=self._rng)
             game.step(mv)
+            if progress_callback is not None:
+                progress_callback(i + 1, self._max_steps)
         return game.get_history()

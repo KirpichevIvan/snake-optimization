@@ -69,6 +69,16 @@ def main() -> None:
     )
 
     if st.button("▶ Запустить прогон", type="primary"):
+        mx = int(max_steps)
+        prog_ph = st.empty()
+        prog_ph.progress(0, text="Генерация партии (симуляция)…")
+
+        def on_sim(cur: int, mx_: int) -> None:
+            if mx_ <= 0:
+                prog_ph.progress(0.0, text="Симуляция…")
+                return
+            prog_ph.progress(min(1.0, cur / mx_), text=f"Симуляция: ход {cur} / до {mx_}")
+
         ph = st.empty()
         cap = st.empty()
         frames = 0
@@ -77,8 +87,9 @@ def main() -> None:
             theta,
             field_height=int(fh),
             field_width=int(fw),
-            max_steps=int(max_steps),
+            max_steps=mx,
             seed=int(seed),
+            progress_callback=on_sim,
         ):
             last = fr
             ph.image(
@@ -91,7 +102,11 @@ def main() -> None:
             frames += 1
             if fr.status is not GameStatus.IN_PROGRESS:
                 break
+            if frames > 1:
+                prog_ph.progress(1.0, text="Показ кадров…")
             time.sleep(delay_sec)
+
+        prog_ph.empty()
 
         if last is not None:
             st.success(

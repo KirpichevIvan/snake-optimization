@@ -18,4 +18,4 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["game", "player", "ui", "llm_as_optimizer", "adam_as_optimizer", "space"]
+packages = ["game", "player", "ui", "llm_as_optimizer", "adam_as_optimizer", "space", "genetic"]

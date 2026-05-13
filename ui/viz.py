@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import random
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import numpy as np
 from PIL import Image
@@ -40,13 +40,14 @@ def iter_episode(
     field_width: int,
     max_steps: int,
     seed: int,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> Iterator[GameState]:
     """Пошагово отдаёт состояние поля: старт, затем после каждого хода, не больше max_steps ходов."""
     rng = random.Random(seed & 0x7FFFFFFF)
     game = SnakeGame(rng, (field_height, field_width))
     player = Player(game, theta, rng, max_steps=max_steps)
     yield game.get_state()
-    player.play()
+    player.play(progress_callback=progress_callback)
     for st in game.get_history():
         yield st
 
