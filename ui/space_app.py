@@ -33,6 +33,31 @@ def _fixed_dims(ix: int, iy: int) -> tuple[int, int]:
     return fix[0], fix[1]
 
 
+def _slice_index_control(
+    data: Grid4D,
+    label: str,
+    axis_index: int,
+    axis_len: int,
+    current: int,
+    *,
+    widget_key: str,
+) -> int:
+    """Индекс по оси для среза; при одном узле слайдер Streamlit создать нельзя (min=max)."""
+    if axis_len <= 1:
+        v = float(np.asarray(data.axes[axis_index], dtype=np.float64)[0])
+        st.caption(f"{label}: зафиксирован в данных · **{v:.6g}** (один узел)")
+        return 0
+    return int(
+        st.slider(
+            f"{label} (узел)",
+            min_value=0,
+            max_value=axis_len - 1,
+            value=int(np.clip(current, 0, axis_len - 1)),
+            key=widget_key,
+        )
+    )
+
+
 def _plot_surface_3d(data: Grid4D, ix: int, iy: int, idx: list[int]) -> go.Figure:
     Z = slice_j_for_ix_iy(data.values, ix=ix, iy=iy, indices=idx)
     xv = np.asarray(data.axes[ix], dtype=np.float64)
@@ -126,19 +151,21 @@ def main() -> None:
         )
 
     f0, f1 = _fixed_dims(ix, iy)
-    s0 = st.slider(
-        f"{PARAM_LABELS[f0]} (узел)",
-        min_value=0,
-        max_value=data.shape[f0] - 1,
-        value=int(np.clip(idx[f0], 0, data.shape[f0] - 1)),
-        key=f"sl_{ix}_{iy}_{f0}",
+    s0 = _slice_index_control(
+        data,
+        PARAM_LABELS[f0],
+        f0,
+        data.shape[f0],
+        idx[f0],
+        widget_key=f"sl_{ix}_{iy}_{f0}",
     )
-    s1 = st.slider(
-        f"{PARAM_LABELS[f1]} (узел)",
-        min_value=0,
-        max_value=data.shape[f1] - 1,
-        value=int(np.clip(idx[f1], 0, data.shape[f1] - 1)),
-        key=f"sl_{ix}_{iy}_{f1}",
+    s1 = _slice_index_control(
+        data,
+        PARAM_LABELS[f1],
+        f1,
+        data.shape[f1],
+        idx[f1],
+        widget_key=f"sl_{ix}_{iy}_{f1}",
     )
     idx[f0] = int(s0)
     idx[f1] = int(s1)

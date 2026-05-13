@@ -57,11 +57,8 @@ def _stable_seed(idx: int, theta: tuple[float, float, float, float]) -> int:
 
 
 def _packed_task(
-    args: tuple[int, int, tuple[int, int], tuple[float, float, float, float]],
+    packed: tuple[tuple[float, float, float, float], int, tuple[int, int], int],
 ) -> float:
-    idx, max_steps, field_size, theta = args
-    seed = _stable_seed(idx, theta)
-    packed = (theta, max_steps, field_size, seed)
     return simulate_packed(packed)
 
 
@@ -72,10 +69,20 @@ def evaluate_j_grid(
     field_size: tuple[int, int],
     workers: int,
     progress: bool = True,
+    rollout_seed: int | None = None,
 ) -> np.ndarray:
     n = grid.shape[0]
     thetas = [tuple(float(x) for x in grid[i]) for i in range(n)]
-    tasks = [(i, max_steps, field_size, thetas[i]) for i in range(n)]
+    if rollout_seed is not None:
+        seed_i = int(rollout_seed)
+        tasks = [
+            (thetas[i], max_steps, field_size, seed_i) for i in range(n)
+        ]
+    else:
+        tasks = [
+            (thetas[i], max_steps, field_size, _stable_seed(i, thetas[i]))
+            for i in range(n)
+        ]
     w = max(1, workers) if workers > 0 else max(1, os.cpu_count() or 4)
     if w <= 1:
         it = tqdm(tasks, desc="Rollouts J(theta)", unit="pt", disable=not progress)
@@ -96,6 +103,7 @@ def compute_grid4d(
     field_size: tuple[int, int],
     workers: int,
     progress: bool,
+    rollout_seed: int | None = None,
 ) -> Grid4D:
     grid, shape, axes = build_grid(bounds)
     j = evaluate_j_grid(
@@ -104,6 +112,7 @@ def compute_grid4d(
         field_size=field_size,
         workers=workers,
         progress=progress,
+        rollout_seed=rollout_seed,
     )
     tensor = j.reshape(shape, order="C")
     return Grid4D(axes=axes, values=tensor)
@@ -117,6 +126,7 @@ def save_landscape_dir(
     field_size: tuple[int, int],
     workers: int,
     progress: bool,
+    rollout_seed: int | None = None,
 ) -> None:
     """Считает J по сетке и сохраняет ``landscape.csv`` + ``meta.json`` в ``out_dir``."""
     out_dir = Path(out_dir).resolve()
@@ -128,6 +138,7 @@ def save_landscape_dir(
         field_size=field_size,
         workers=workers,
         progress=progress,
+        rollout_seed=rollout_seed,
     )
     meta: dict[str, Any] = {
         "version": PACKAGE_VERSION,
@@ -140,6 +151,8 @@ def save_landscape_dir(
         "shape": [int(s) for s in shape],
         "n_points": int(grid.shape[0]),
     }
+    if rollout_seed is not None:
+        meta["rollout_seed"] = int(rollout_seed)
     (out_dir / META_FILENAME).write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
     csv_path = out_dir / CSV_FILENAME
@@ -221,6 +234,12 @@ def _cli_landscape() -> None:
     parser.add_argument("--field-width", type=int, default=10)
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--max-points", type=int, default=50_000)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Фиксированное зерно RNG для каждого роллаута (если не задано — отдельное зерно на узел сетки)",
+    )
     parser.add_argument("--no-progress", action="store_true")
     args = parser.parse_args()
 
@@ -242,6 +261,7 @@ def _cli_landscape() -> None:
         field_size=(args.field_height, args.field_width),
         workers=args.workers,
         progress=not args.no_progress,
+        rollout_seed=args.seed,
     )
     print(f"Готово: {out / CSV_FILENAME}, {out / META_FILENAME}", flush=True)
 
