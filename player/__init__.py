@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from player.player import Player
 from player.policy import Theta, choose_move, random_theta
-from player.rollout import score_objective, simulate, simulate_packed
+from player.rollout import score_objective, simulate, simulate_packed, simulate_rollout, simulate_rollout_packed
 
 __all__ = [
     "Player",
@@ -12,4 +12,6 @@ __all__ = [
     "score_objective",
     "simulate",
     "simulate_packed",
+    "simulate_rollout",
+    "simulate_rollout_packed",
 ]

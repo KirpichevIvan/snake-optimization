@@ -15,7 +15,7 @@ from typing import Any
 from tqdm import tqdm
 
 from player.policy import Theta, random_theta
-from player.rollout import simulate, simulate_packed
+from player.rollout import RolloutPacked, simulate_rollout, simulate_rollout_packed
 
 # Границы как в ``random_theta`` (policy.py)
 _WEIGHT_BOUNDS: tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]] = (
@@ -97,13 +97,18 @@ class GeneticHyperparams:
     initial_spread: float = 0.35
     initial_spread_per_weight: tuple[float, float, float, float] | None = None
     rollout_workers: int = 0
+    stretch: bool = False
+    stretch_chunk: int = 100
+    randomize_game_seed_per_generation: bool = False
 
 
 class GeneticLearn:
     """
     Обучение весов политики генетическим алгоритмом.
 
-    - ``snake_game_seed``: одно и то же целое передаётся в каждый rollout (все поколения, все особи).
+    - ``snake_game_seed``: сид rollout для всех особей поколения; при
+      ``randomize_game_seed_per_generation`` — базовый сид в meta, на каждое поколение
+      новое значение (детерминированно от ``training_seed``).
     - ``training_seed``: зерно для RNG операторов ГА (инициализация, отбор, кроссовер, мутация).
     - ``verbose``: подробный вывод в stdout и прогресс-бар tqdm при оценке популяции.
     - Поколение 0: см. ``GeneticHyperparams.initial_weights`` / ``initial_spread`` (или ``random_theta``).
@@ -130,6 +135,25 @@ class GeneticLearn:
     def _log(self, msg: str) -> None:
         if self._verbose:
             print(msg, flush=True)
+
+    def _rollout_pack(self, theta: Theta, rollout_seed: int) -> RolloutPacked:
+        hp = self._hp
+        if hp.stretch:
+            return (
+                theta,
+                hp.max_steps,
+                self._field_size,
+                int(rollout_seed),
+                True,
+                hp.stretch_chunk,
+            )
+        return (theta, hp.max_steps, self._field_size, int(rollout_seed))
+
+    def _rollout_seed_for_generation(self, _gen_index: int, rng: random.Random) -> int:
+        hp = self._hp
+        if hp.randomize_game_seed_per_generation:
+            return int(rng.randrange(0, 0x8000_0000))
+        return self._snake_game_seed
 
     def run(
         self,
@@ -158,15 +182,29 @@ class GeneticLearn:
         if hp.tournament_size < 1:
             msg = "tournament_size должен быть >= 1"
             raise ValueError(msg)
+        if hp.stretch_chunk < 1:
+            msg = "stretch_chunk должен быть >= 1"
+            raise ValueError(msg)
 
         self._results_dir.mkdir(parents=True, exist_ok=True)
         rng = random.Random(hp.training_seed)
 
+        stretch_note = (
+            f"вытягивание: блоки по {hp.stretch_chunk} шагов, пока идёт игра и съедено ≥1 яблоко за блок"
+            if hp.stretch
+            else "вытягивание: выкл."
+        )
+        seed_note = (
+            "сид игры: новый на каждое поколение (RNG от training_seed)"
+            if hp.randomize_game_seed_per_generation
+            else f"сид игры (rollout)={self._snake_game_seed} на все поколения"
+        )
         self._log(
             "Генетическое обучение: поле "
-            f"{self._field_size[0]}x{self._field_size[1]}, до {hp.max_steps} шагов за эпизод; "
+            f"{self._field_size[0]}x{self._field_size[1]}, базово до {hp.max_steps} шагов за эпизод "
+            f"({stretch_note}); "
             f"популяция {hp.population_size}, поколений {hp.generations}; "
-            f"сид игры (rollout)={self._snake_game_seed}, сид обучения (ГА)={hp.training_seed}."
+            f"{seed_note}; сид обучения (ГА)={hp.training_seed}."
         )
         self._log(f"Каталог результатов: {self._results_dir.resolve()}")
 
@@ -194,7 +232,20 @@ class GeneticLearn:
 
         with csv_path.open("w", newline="", encoding="utf-8") as f_csv:
             writer = csv.writer(f_csv)
-            writer.writerow(["w_food", "w_danger", "w_space", "w_wall", "J", "gen_number", "snake_number"])
+            writer.writerow(
+                [
+                    "w_food",
+                    "w_danger",
+                    "w_space",
+                    "w_wall",
+                    "J",
+                    "steps",
+                    "snake_game_seed",
+                    "gen_number",
+                    "snake_number",
+                ]
+            )
+            generation_seeds: list[int] = []
 
             if hp.initial_weights is None:
                 self._log("Инициализация популяции (случайные веса по диапазонам random_theta).")
@@ -226,17 +277,22 @@ class GeneticLearn:
                         aborted = True
                         break
 
+                    gen_rollout_seed = self._rollout_seed_for_generation(gen, rng)
+                    generation_seeds.append(gen_rollout_seed)
                     self._log("")
-                    self._log(f"--- Поколение {gen + 1} / {hp.generations}: оценка пригодности (rollout) ---")
+                    self._log(
+                        f"--- Поколение {gen + 1} / {hp.generations}: оценка пригодности (rollout), "
+                        f"snake_game_seed={gen_rollout_seed} ---"
+                    )
 
                     fitness: list[float] = []
+                    steps_vals: list[int] = []
                     if n_workers > 1 and pool is not None:
-                        packs = [
-                            (theta, hp.max_steps, self._field_size, self._snake_game_seed)
-                            for theta in population
+                        packs: list[RolloutPacked] = [
+                            self._rollout_pack(theta, gen_rollout_seed) for theta in population
                         ]
                         chunksize = max(1, len(packs) // (n_workers * 8))
-                        it = pool.map(simulate_packed, packs, chunksize=chunksize)
+                        it = pool.map(simulate_rollout_packed, packs, chunksize=chunksize)
                         if self._verbose:
                             it = tqdm(
                                 it,
@@ -244,8 +300,12 @@ class GeneticLearn:
                                 desc=f"Поколение {gen + 1}/{hp.generations}",
                                 unit="особь",
                             )
-                        fitness = list(it)
-                        for snake_idx, (theta, j) in enumerate(zip(population, fitness, strict=True)):
+                        rollout_results = list(it)
+                        for snake_idx, (theta, (j, steps)) in enumerate(
+                            zip(population, rollout_results, strict=True)
+                        ):
+                            fitness.append(j)
+                            steps_vals.append(int(steps))
                             writer.writerow(
                                 [
                                     f"{theta[0]:.10g}",
@@ -253,6 +313,8 @@ class GeneticLearn:
                                     f"{theta[2]:.10g}",
                                     f"{theta[3]:.10g}",
                                     f"{j:.10g}",
+                                    int(steps),
+                                    gen_rollout_seed,
                                     gen + 1,
                                     snake_idx + 1,
                                 ]
@@ -265,6 +327,8 @@ class GeneticLearn:
                                         "generations_total": hp.generations,
                                         "snake_index": snake_idx + 1,
                                         "snakes_total": hp.population_size,
+                                        "steps": int(steps),
+                                        "snake_game_seed": gen_rollout_seed,
                                     }
                                 )
                     else:
@@ -277,13 +341,16 @@ class GeneticLearn:
                                 unit="особь",
                             )
                         for snake_idx, theta in eval_iter:
-                            j = simulate(
+                            j, steps = simulate_rollout(
                                 theta,
                                 max_steps=hp.max_steps,
-                                seed=self._snake_game_seed,
+                                seed=gen_rollout_seed,
                                 field_size=self._field_size,
+                                stretch=hp.stretch,
+                                stretch_chunk=hp.stretch_chunk,
                             )
                             fitness.append(j)
+                            steps_vals.append(int(steps))
                             writer.writerow(
                                 [
                                     f"{theta[0]:.10g}",
@@ -291,6 +358,8 @@ class GeneticLearn:
                                     f"{theta[2]:.10g}",
                                     f"{theta[3]:.10g}",
                                     f"{j:.10g}",
+                                    int(steps),
+                                    gen_rollout_seed,
                                     gen + 1,
                                     snake_idx + 1,
                                 ]
@@ -303,6 +372,8 @@ class GeneticLearn:
                                         "generations_total": hp.generations,
                                         "snake_index": snake_idx + 1,
                                         "snakes_total": hp.population_size,
+                                        "steps": int(steps),
+                                        "snake_game_seed": gen_rollout_seed,
                                     }
                                 )
                             if interrupt_check is not None and interrupt_check():
@@ -325,6 +396,10 @@ class GeneticLearn:
                     j_min = min(fitness)
                     j_max = max(fitness)
                     j_mean = statistics.mean(fitness)
+                    steps_min = min(steps_vals)
+                    steps_mean = statistics.mean(steps_vals)
+                    steps_max = max(steps_vals)
+                    steps_best = steps_vals[gen_best_i]
                     improved = gen_best_j > best_j_ever
                     if gen_best_j > best_j_ever:
                         best_j_ever = gen_best_j
@@ -332,7 +407,9 @@ class GeneticLearn:
 
                     self._log(
                         f"Поколение {gen + 1}: J min={j_min:.4f}, mean={j_mean:.4f}, max={j_max:.4f}; "
-                        f"лучшая особь J={gen_best_j:.4f}, theta={_fmt_theta(population[gen_best_i])}."
+                        f"шаги min={steps_min}, mean={steps_mean:.1f}, max={steps_max}; "
+                        f"лучшая особь J={gen_best_j:.4f}, шагов={steps_best}, "
+                        f"theta={_fmt_theta(population[gen_best_i])}."
                     )
                     if improved:
                         self._log("  -> новый лучший результат за весь прогон (best_ever обновлён).")
@@ -352,6 +429,11 @@ class GeneticLearn:
                                 "best_theta_generation": tuple(population[gen_best_i]),
                                 "best_j_ever": best_j_ever,
                                 "best_theta_ever": tuple(best_ever),
+                                "steps_min": steps_min,
+                                "steps_mean": steps_mean,
+                                "steps_max": steps_max,
+                                "steps_best_generation": steps_best,
+                                "snake_game_seed": gen_rollout_seed,
                             }
                         )
 
@@ -386,15 +468,19 @@ class GeneticLearn:
                     self._log(f"Следующее поколение собрано, снова {hp.population_size} особей.")
 
         if best_j_ever == float("-inf"):
-            best_j_ever = simulate(
+            best_j_ever, _ = simulate_rollout(
                 best_ever,
                 max_steps=hp.max_steps,
                 seed=self._snake_game_seed,
                 field_size=self._field_size,
+                stretch=hp.stretch,
+                stretch_chunk=hp.stretch_chunk,
             )
 
         meta_done = json.loads(meta_path.read_text(encoding="utf-8"))
         meta_done["run_aborted"] = bool(aborted)
+        if hp.randomize_game_seed_per_generation:
+            meta_done["generation_rollout_seeds"] = generation_seeds
         meta_path.write_text(json.dumps(meta_done, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
         best_payload = {

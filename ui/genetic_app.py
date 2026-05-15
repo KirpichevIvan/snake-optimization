@@ -165,6 +165,23 @@ def main() -> None:
         population_size = st.number_input("population_size", min_value=2, max_value=500, value=24, step=1)
         generations = st.number_input("generations", min_value=1, max_value=500, value=8, step=1)
         max_steps = st.number_input("max_steps (rollout)", min_value=1, max_value=5000, value=200, step=1)
+        stretch = st.checkbox(
+            "Вытягивание (stretch)",
+            value=False,
+            help=(
+                "Если после max_steps игра ещё идёт — добавлять блоки шагов, пока за блок съедено ≥1 яблоко "
+                "(иначе стоп, чтобы не крутить зацикленную змейку)."
+            ),
+        )
+        stretch_chunk = st.number_input(
+            "stretch_chunk",
+            min_value=1,
+            max_value=2000,
+            value=100,
+            step=10,
+            disabled=not stretch,
+            help="Размер одного блока дополнительных шагов.",
+        )
         crossover_prob = st.slider("crossover_prob", min_value=0.0, max_value=1.0, value=0.7, step=0.05)
         mutation_prob = st.slider("mutation_prob", min_value=0.0, max_value=1.0, value=0.15, step=0.05)
         mutation_sigma = st.number_input("mutation_sigma", min_value=0.001, max_value=5.0, value=0.25, step=0.01)
@@ -214,7 +231,15 @@ def main() -> None:
             max_value=2**31 - 1,
             value=42,
             step=1,
-            help="Фиксированный сид для каждого simulate (все поколения и особи).",
+            help="Сид rollout: на все поколения, если не включена рандомизация ниже.",
+        )
+        randomize_game_seed_per_generation = st.checkbox(
+            "Новый snake_game_seed каждое поколение",
+            value=False,
+            help=(
+                "На каждое поколение свой сид игры (все особи поколения — один сид). "
+                "Значения детерминированы от training_seed."
+            ),
         )
         field_height = st.number_input("field_height", min_value=3, max_value=40, value=10, step=1)
         field_width = st.number_input("field_width", min_value=3, max_value=40, value=10, step=1)
@@ -274,6 +299,9 @@ def main() -> None:
                 initial_spread=float(initial_spread),
                 initial_spread_per_weight=initial_spread_per_weight,
                 rollout_workers=int(rollout_workers),
+                stretch=bool(stretch),
+                stretch_chunk=max(1, int(stretch_chunk)),
+                randomize_game_seed_per_generation=bool(randomize_game_seed_per_generation),
             )
 
             if results_dir_str.strip():

@@ -40,7 +40,17 @@ def main() -> None:
         ),
     )
     parser.add_argument("--training-seed", type=int, default=42, help="Сид RNG операторов ГА")
-    parser.add_argument("--snake-game-seed", type=int, default=42, help="Сид rollout (поле/игра), фиксирован на весь прогон")
+    parser.add_argument(
+        "--snake-game-seed",
+        type=int,
+        default=42,
+        help="Сид rollout (поле/игра); на все поколения, если не включена рандомизация по поколениям",
+    )
+    parser.add_argument(
+        "--randomize-game-seed-per-generation",
+        action="store_true",
+        help="Новый snake_game_seed на каждое поколение (детерминированно от training_seed)",
+    )
     parser.add_argument(
         "--output-dir",
         type=str,
@@ -51,6 +61,20 @@ def main() -> None:
     parser.add_argument("--population-size", type=int, default=24)
     parser.add_argument("--generations", type=int, default=8)
     parser.add_argument("--max-steps", type=int, default=200, help="Максимум шагов змейки за эпизод")
+    parser.add_argument(
+        "--stretch",
+        action="store_true",
+        help=(
+            "Вытягивание: если после max_steps игра ещё идёт, добавлять блоки по --stretch-chunk шагов, "
+            "пока за блок съедено хотя бы одно яблоко"
+        ),
+    )
+    parser.add_argument(
+        "--stretch-chunk",
+        type=int,
+        default=100,
+        help="Размер блока дополнительных шагов при вытягивании (по умолчанию 100)",
+    )
     parser.add_argument("--field-height", type=int, default=10)
     parser.add_argument("--field-width", type=int, default=10)
     parser.add_argument("--crossover-prob", type=float, default=0.70)
@@ -94,6 +118,9 @@ def main() -> None:
         elite_count=max(0, args.elite_count),
         tournament_size=max(1, args.tournament_size),
         rollout_workers=max(0, args.rollout_workers),
+        stretch=bool(args.stretch),
+        stretch_chunk=max(1, args.stretch_chunk),
+        randomize_game_seed_per_generation=bool(args.randomize_game_seed_per_generation),
     )
     field_size = (args.field_height, args.field_width)
 

@@ -35,6 +35,27 @@ class Player:
         self._rng = rng
         self._max_steps = max_steps
 
+    def play_steps(self, n_steps: int) -> tuple[int, int]:
+        """
+        До ``n_steps`` успешных ``step`` или до конца игры.
+
+        Возвращает ``(число_шагов, яблок_съедено_за_этот_фрагмент)``.
+        """
+        if n_steps <= 0:
+            return 0, 0
+        game = self._game
+        apples_before = game.get_state().score
+        taken = 0
+        for _ in range(n_steps):
+            st = game.get_state()
+            if st.status is not GameStatus.IN_PROGRESS:
+                break
+            mv = choose_move(st, self._theta, max_steps=self._max_steps, rng=self._rng)
+            game.step(mv)
+            taken += 1
+        apples_after = game.get_state().score
+        return taken, apples_after - apples_before
+
     def play(
         self,
         *,
